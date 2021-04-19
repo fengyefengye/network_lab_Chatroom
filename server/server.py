@@ -36,8 +36,9 @@ class Server:
                 # 解析成json数据
                 obj = json.loads(buffer)
                 # 如果是广播指令
-                if obj['type'] == 'broadcast':
-                    self.__broadcast(obj['sender_id'], obj['message'])
+                if obj['cmd_type'] == 'broadcast':
+                    self.__broadcast(obj['sender_usrId'], obj['message'])
+                    print('[', self.__nicknames[obj['sender_usrId']],']', obj['message'])
                 else:
                     print('[Server] 无法解析json数据包:', connection.getsockname(), connection.fileno())
             except Exception:
@@ -55,8 +56,8 @@ class Server:
         for i in range(1, len(self.__connections)):
             if user_id != i:
                 self.__connections[i].send(json.dumps({
-                    'sender_id': user_id,
-                    'sender_nickname': self.__nicknames[user_id],
+                    'sender_usrId': user_id,
+                    'sender_usrName': self.__nicknames[user_id],
                     'message': message
                 }).encode())
 
@@ -91,7 +92,7 @@ class Server:
                 # 解析成json数据
                 obj = json.loads(buffer)
                 # 如果是连接指令，那么则返回一个新的用户编号，接收用户连接
-                if obj['type'] == 'login':
+                if obj['cmd_type'] == 'login':
                     self.__connections.append(connection)
                     self.__nicknames.append(obj['nickname'])
                     connection.send(json.dumps({

@@ -11,7 +11,7 @@ class Client(Cmd):
     客户端
     """
     prompt = 'Chatroom>'
-    intro = '[Welcome] Network Chatroom\n' + '[Welcome] Enter help for cmds.\n'
+    intro = '[Welcome] Network Chatroom\n' + '[Welcome] Enter help for commands.\n'
 
     def __init__(self):
         """
@@ -20,10 +20,8 @@ class Client(Cmd):
         # super().__init__()
         Cmd.__init__(self)
         self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__id = None
-        self.__nickname = None
-        # self.usrId = None
-        # self.usrName = None
+        self.usrId = None
+        self.usrName = None
 
     def __receive_message_thread(self):
         """
@@ -34,7 +32,7 @@ class Client(Cmd):
             try:
                 buffer = self.clientSocket.recv(1024).decode()
                 obj = json.loads(buffer)
-                print('[' + str(obj['sender_nickname']) + '(' + str(obj['sender_id']) + ')' + ']', obj['message'])
+                print('[' + str(obj['sender_usrName']) + '(' + str(obj['sender_usrId']) + ')' + ']', obj['message'])
             except Exception:
                 print('[Client] 无法从服务器获取数据')
 
@@ -44,8 +42,8 @@ class Client(Cmd):
         :param message: 消息内容
         """
         self.clientSocket.send(json.dumps({
-            'type': 'broadcast',
-            'sender_id': self.__id,
+            'cmd_type': 'broadcast',
+            'sender_usrId': self.usrId,
             'message': message
         }).encode())
 
@@ -65,7 +63,7 @@ class Client(Cmd):
 
         # 将昵称发送给服务器，获取用户id
         self.clientSocket.send(json.dumps({
-            'type': 'login',
+            'cmd_type': 'login',
             'nickname': nickname
         }).encode())
         # 尝试接受数据
@@ -74,8 +72,8 @@ class Client(Cmd):
             buffer = self.clientSocket.recv(1024).decode()
             obj = json.loads(buffer)
             if obj['id']:
-                self.__nickname = nickname
-                self.__id = obj['id']
+                self.usrName = nickname
+                self.usrId = obj['id']
                 print('[Client] 成功登录到聊天室')
 
                 # 开启子线程用于接受数据
@@ -94,7 +92,7 @@ class Client(Cmd):
         """
         message = args
         # 显示自己发送的消息
-        print('[' + str(self.__nickname) + '(' + str(self.__id) + ')' + ']', message)
+        print('[' + str(self.usrName) + '(' + str(self.usrId) + ')' + ']', message)
         # 开启子线程用于发送数据
         thread = threading.Thread(target=self.__send_message_thread, args=(message, ))
         thread.setDaemon(True)

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 from server.server import Server
 
 
