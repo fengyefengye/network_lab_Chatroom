@@ -29,14 +29,14 @@ class SocketUser(User):
     def sendHeartBeat(self):
         start_time = time.time()
         try:
-            self.client.send(packData(b'Hello Server Are you OK?', NORMAL))
+            self.client.send(packData(b'Hello Server Are you OK?', HEART_BEAT))
         except Exception as e:
             total_time = int((time.time() - start_time) * 1000)
-            events.request_failure.fire(request_type="Normal", name="SendMessage", response_time=total_time,
+            events.request_failure.fire(request_type="HEART_BEAT", name="SendMessage", response_time=total_time,
                                         response_length=0, exception=e)
         else:
             total_time = int((time.time() - start_time) * 1000)
-            events.request_success.fire(request_type="Normal", name="SendMessage", response_time=total_time,
+            events.request_success.fire(request_type="HEART_BEAT", name="SendMessage", response_time=total_time,
                                         response_length=0)
 
         start_time = time.time()
@@ -44,9 +44,9 @@ class SocketUser(User):
             data = self.client.recv(1024)
         except Exception as e:
             total_time = int((time.time() - start_time) * 1000)
-            events.request_failure.fire(request_type="Normal", name="RecvMessage", response_time=total_time,
+            events.request_failure.fire(request_type="HEART_BEAT", name="RecvMessage", response_time=total_time,
                                         response_length=0, exception=e)
         else:
             total_time = int((time.time() - start_time) * 1000)
-            events.request_success.fire(request_type="Normal", name="RecvMessage", response_time=total_time,
+            events.request_success.fire(request_type="HEART_BEAT", name="RecvMessage", response_time=total_time,
                                         response_length=0)

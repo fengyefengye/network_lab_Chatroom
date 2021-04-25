@@ -11,7 +11,7 @@ import os
 dataBuffer = bytes()
 # 未收到回应的心跳包计数
 heartBeatCount = 0
-# 是否在聊天室中
+# client状态: 是否运行
 AFK_n = True
 # 是否是聊天室的管理员
 sudo_flag = False
@@ -43,22 +43,29 @@ def upload_file(file_url):
                 file_idx = 0
                 file_title = os.path.basename(file_url)
                 while True:
-                    file_content = f.read(BUFFERSIZE / 2)
+                    file_content = f.read(BUFFERSIZE // 2)
                     if len(file_content) == 0:
                         break
-                    client.sendall(packData(json.dumps({
+                    # client.sendall(packData(json.dumps({
+                    #     'sender_name': usr_name,
+                    #     'file_title': file_title,
+                    #     'file_idx': file_idx,
+                    #     'file_content': file_content
+                    # }).encode('utf-8'), UPFILE))
+                    # json无法打包bytes类型，只能用bytes发送
+                    client.sendall(packData(bytes('{}'.format({
                         'sender_name': usr_name,
                         'file_title': file_title,
                         'file_idx': file_idx,
                         'file_content': file_content
-                    }).encode('utf-8'), UPFILE))
+                    }), 'utf-8'), UPFILE))
                     file_idx = file_idx + 1
-                    time.sleep(0.01)
+                    time.sleep(FILESLEEP)
                 client.sendall(packData(json.dumps({
                     'sender_name': usr_name,
                     'send_time': datetime.datetime.now().strftime('%H:%M:%S'),
                     'message': 'Upload file ' + str(file_title) + ' to server'
-                }), NORMAL))
+                }).encode('utf-8'), NORMAL))
         else:
             print('Error: not a file')
     except:
@@ -75,17 +82,6 @@ def sendMsg():
             'send_time': datetime.datetime.now().strftime('%H:%M:%S'),
             'message': user_input
         }).encode('utf-8')
-        # if command == 'login':  # 登入命令
-        #     usr_name = msg
-        #     client.sendall(packData(json.dumps({
-        #         'usr_name': usr_name
-        #     }).encode('utf-8'), LOGIN))
-        # if command == 'send':  # 发送消息命令
-        #     client.sendall(packData(json.dumps({
-        #         'sender_name': usr_name,
-        #         'send_time': datetime.datetime.now().strftime('%H:%M:%S'),
-        #         'message': msg
-        #     }).encode('utf-8'), NORMAL))
         if user_input == '':
             continue
         elif user_input == '/quit':  # 退出命令
@@ -124,19 +120,30 @@ def sendMsg():
                 break
             else:
                 print('You must be admin to use this command.')
-        elif user_input == '/upfile': # 上传文件
-            file_url = input('Enter the url of file: ')
+        elif user_input == '/upfile':  # 上传文件
+            file_url = input('Enter the absolute path of file: ')
             upfile_thread = threading.Thread(target=upload_file, args=(file_url,))
             upfile_thread.setDaemon(True)
             upfile_thread.start()
+        elif user_input == '/getfile':  # 查看服务中的所有文件
+            client.sendall(packData(json.dumps({
+                'file_dict': {}
+            }).encode('utf-8'), GETFILE))
+        elif user_input == '/downfile':  # 从服务器下载文件
+            file_name = input('Please enter the file name you want to download: ')
+            client.sendall(packData(json.dumps({
+                'file_name': file_name
+            }).encode('utf-8'), DOWNFILE))
         elif user_input == '/help':  # 帮助命令
             print('''
-            /quit   : leave chatroom
-            /sudo   : enter sudo mode
-            /upfile : upload file to server
-            /exit   : exit sudo mode [sudo]
-            /killall: shutdown the chatroom server [sudo]
-            /help   : get help message
+            /quit    : leave chatroom
+            /sudo    : enter sudo mode
+            /upfile  : upload file to server
+            /getfile : get all file information in server
+            /downfile: download specific file from server
+            /exit    : exit sudo mode [sudo]
+            /killall : shutdown the chatroom server [sudo]
+            /help    : get help message
             ''')
 
         else:
@@ -180,6 +187,32 @@ def dealData(headPack, body):
         client.close()
         # exit(0)
 
+    # 数据包类型为UPFILE时
+    if headPack[1] == UPFILE:
+        my_dict = eval(body.decode('utf-8'))
+        if my_dict['file_idx'] == 0:
+            with open('client_files/{}/{}'.format(
+                usr_name,
+                my_dict['file_title']
+            ), 'w') as f:
+                f.close()
+        with open('client_files/{}/{}'.format(
+            usr_name,
+            my_dict['file_title']
+        ), 'ab') as f:
+            f.write(my_dict['file_content'])
+            f.close()
+
+    # 数据包类型为GETFILE时
+    if headPack[1] == GETFILE:
+        file_dict = json.loads(body)['file_dict']
+        print('> Getting all files in server...<file name> <- <sender>')
+        for key, value in file_dict.items():
+            print('{} <- {}'.format(
+                key,
+                value
+            ))
+
 
 if __name__ == "__main__":
     usr_name = input('[Welcome] Network socket exp: Chatroom, Please enter your username: ')
@@ -198,6 +231,16 @@ if __name__ == "__main__":
     client.sendall(packData(json.dumps({
         'usr_name': usr_name
     }).encode('utf-8'), LOGIN))
+
+    # try:
+    #     os.makedirs('client_files')
+    # except:
+    #     pass
+    basePath = os.path.abspath(os.curdir)
+    if not os.path.exists(os.path.join(basePath, 'client_files')):
+        os.makedirs(os.path.join(basePath, 'client_files'))
+    if not os.path.exists(os.path.join(basePath, 'client_files/{}'.format(usr_name))):
+        os.makedirs(os.path.join(basePath, 'client_files/{}'.format(usr_name)))
 
     heartBeatThread = threading.Thread(target=sendHeartBeat, name='heartBeatThread')
     sendMsgThread = threading.Thread(target=sendMsg, name='sendMsgThread')
@@ -221,7 +264,7 @@ if __name__ == "__main__":
             bodySize = headPack[2]
 
             if len(dataBuffer) < HEADERSIZE + bodySize:
-                print("数据包（%s Byte）不完整（总共%s Byte），继续接受 " % (len(dataBuffer), HEADERSIZE + bodySize))
+                print("packet (%s Byte) incomplete (total%s Byte), continue receiving..." % (len(dataBuffer), HEADERSIZE + bodySize))
                 break
 
             body = dataBuffer[HEADERSIZE:HEADERSIZE + bodySize]

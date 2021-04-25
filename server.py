@@ -6,6 +6,7 @@ import select
 import time
 import threading
 import datetime
+import os
 
 isRunning = True  # 服务端是否正在运行
 
@@ -13,10 +14,38 @@ isRunning = True  # 服务端是否正在运行
 dataBuffer = {}
 inputs = {}
 outputs = {}
-file_list = [] # 接收文件
+file_dict = {}  # 保存所有服务器接收文件信息的字典 key = 文件名 value = 发送人
 
 # 定义工作线程数量
 workerThreadNum = 4
+
+
+# 给请求文件的client发送文件
+def file2client(conn, file_title):
+    global file_dict
+    with open('server_file/' + str(file_title), 'rb') as f:
+        this_file_idx = 0
+        while True:
+            file_content = f.read(BUFFERSIZE // 2)
+            if len(file_content) == 0:
+                break
+            conn.sendall(packData(bytes('{}'.format({
+                'sender_name': file_dict[file_title],
+                'file_title': file_title,
+                'file_idx': this_file_idx,
+                'file_content': file_content
+            }), 'utf-8'), UPFILE))
+            print('Sending file of {} number = {}'.format(
+                file_title,
+                this_file_idx
+            ))
+            this_file_idx = this_file_idx + 1
+            time.sleep(FILESLEEP)
+        conn.sendall(packData(json.dumps({
+            'sender_name': 'System',
+            'send_time': datetime.datetime.now().strftime('%H:%M:%S'),
+            'message': str(file_title) + ' download successfully.'
+        }).encode('utf-8'), NORMAL))
 
 
 # 广播消息给所有的进程
@@ -27,7 +56,7 @@ def broadcast_msg(body, packetType):
 
 # 处理接收到的数据包
 def dealData(conn, headPack, body, workerId):
-    global isRunning, dataBuffer, inputs, outputs
+    global isRunning, dataBuffer, inputs, outputs, file_dict
     # 数据包类型为HEART_BEAT时
     if headPack[1] == HEART_BEAT:
         conn.send(packData(b'pong!', HEART_BEAT))
@@ -79,22 +108,36 @@ def dealData(conn, headPack, body, workerId):
 
     # 数据包类型为UPFILE时
     if headPack[1] == UPFILE:
-        my_dict = json.loads(body)
-        print('Receive file from {}'.format(
-            my_dict['sender_name']
+        # my_dict = json.loads(body)
+        my_dict = eval(body.decode('utf-8'))
+        print('Receive file from {} number = {}'.format(
+            my_dict['sender_name'],
+            my_dict['file_idx']
         ))
         if my_dict['file_idx'] == 0:
-            file_list.append({
-                'file_title': my_dict['file_title'],
-                'sender_name': my_dict['sender_name'],
-                'download_cnt': 0
-            })
+            # file_list.append({
+            #     'file_title': my_dict['file_title'],
+            #     'sender_name': my_dict['sender_name']
+            # })
+            file_dict[my_dict['file_title']] = my_dict['sender_name']
             with open('server_file/{}'.format(my_dict['file_title']), 'w') as f:
                 f.close()
         with open('server_file/{}'.format(my_dict['file_title']), 'ab') as f:
             f.write(my_dict['file_content'])
             f.close()
 
+    # 数据包类型为GETFILE时
+    if headPack[1] == GETFILE:
+        conn.sendall(packData(json.dumps({
+            'file_dict': file_dict
+        }).encode('utf-8'), GETFILE))
+
+    # 数据包类型为DOWNFILE时
+    if headPack[1] == DOWNFILE:
+        file_title = json.loads(body)['file_name']
+        upfile_thread = threading.Thread(target=file2client, args=(conn, file_title))
+        upfile_thread.setDaemon(True)
+        upfile_thread.start()
 
 
 # 工作线程, 负责一系列客户端的收发和数据处理
@@ -125,7 +168,7 @@ def workerThread(workerId):
                     bodySize = headPack[2]
 
                     if len(dataBuffer[obj]) < HEADERSIZE + bodySize:
-                        print("数据包（%s Byte）不完整（总共%s Byte），继续接受 " % (len(dataBuffer[obj]), HEADERSIZE + bodySize))
+                        print("packet (%s Byte) incomplete (total%s Byte), continue receiving..." % (len(dataBuffer[obj]), HEADERSIZE + bodySize))
                         break
                     body = dataBuffer[obj][HEADERSIZE:HEADERSIZE + bodySize]
 
@@ -193,6 +236,7 @@ def myServerSocket():
         index = index + 1
     server.close()
 
+
 if __name__ == "__main__":
     # try:
     # # 开启监控server端输入的线程
@@ -200,6 +244,15 @@ if __name__ == "__main__":
     # server_input.setDaemon(True)
     # server_input.start()
 
+    basePath = os.path.abspath(os.curdir)
+    if not os.path.exists(os.path.join(basePath, 'server_file')):
+        os.makedirs(os.path.join(basePath, 'server_file'))
+
+    # try:
+    #     os.makedirs('server_file')
+    # except:
+    #     print('cannot create directory')
+    #     pass
     # 预先启动workerThreadNum个工作线程
     for i in range(0, workerThreadNum):
         inputs[i] = []
@@ -228,7 +281,6 @@ if __name__ == "__main__":
             outputs.clear()
         else:
             continue
-
 
     # # 主线程进行接入监听
     # server = socket(AF_INET, SOCK_STREAM)

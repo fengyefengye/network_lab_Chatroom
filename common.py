@@ -9,6 +9,10 @@ LOGIN = 2
 LOGOUT = 3
 SERVERDOWN = 4
 UPFILE = 5
+GETFILE = 6
+DOWNFILE = 7
+
+FILESLEEP = 0.0000001 # 睡0.0001ms
 
 
 def packData(data, packetType):
